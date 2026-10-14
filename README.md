@@ -8,7 +8,7 @@ The project includes the public programme page, validated registration form, dup
 
 The app has a local preview mode when Supabase is not configured. Local browser storage is not a production backend: preview registration, payment actions, ticket QR values, admin controls, and check-ins are not suitable for real event operations. The Supabase registration and staff actions require the deployment configuration below. Staff UI authentication, participant expiring-link access, receipt storage, production scanning integration, ticket-token delivery, and UI-to-function wiring still need completion before production use. Do not collect or confirm real payments until those items are implemented and independently verified.
 
-No bank account, venue, event date, or contact details have been invented. They start blank and are intended to be filled by the organizer.
+The organizer supplied the event schedule, venue, transfer account and support contacts. These values are included in the app's default settings and in the initial database seed.
 
 ## Local development
 

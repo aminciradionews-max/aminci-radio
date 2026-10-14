@@ -42,7 +42,9 @@ create table if not exists public.event_settings (
   bank_name text, account_name text, account_number text, payment_reference text, payment_instructions text, support_contact text,
   registration_open boolean not null default true, updated_at timestamptz not null default now(), updated_by uuid references public.profiles(id)
 );
-insert into public.event_settings(id) values (1) on conflict do nothing;
+insert into public.event_settings(id,event_date,deadline,venue,event_time,bank_name,account_name,account_number,support_contact,payment_instructions)
+values (1,'31 October 2026','27 October 2026','Aminci Radio Sharada, Kwanar Ganduje, Sharada Industrial Area along Ilera Agro','10:00am','GTBank','Aminci Network Technology (Aminci Radio)','0558087985','080336828125, 09048736532','Transfer ₦5,000 and keep your receipt. Your ticket becomes available after an administrator independently verifies the payment.')
+on conflict (id) do nothing;
 create table if not exists public.audit_logs (
   id bigint generated always as identity primary key, actor_id uuid references public.profiles(id), action text not null,
   registration_id uuid references public.registrations(id), details jsonb not null default '{}', created_at timestamptz not null default now()

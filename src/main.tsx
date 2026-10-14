@@ -10,7 +10,7 @@ const KEY = 'aminci-registrations-v1'
 const readRows = (): Registration[] => { try { return JSON.parse(localStorage.getItem(KEY) || '[]') as Registration[] } catch { return [] } }
 const saveRows = (rows: Registration[]) => localStorage.setItem(KEY, JSON.stringify(rows))
 const money = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 })
-const initialSettings = { eventDate: '', deadline: '', venue: '', time: '', bank: '', account: '', number: '', reference: 'Aminci Training / [Your Name]', instructions: 'Transfer ₦5,000 and keep your receipt. Your ticket becomes available after an administrator independently verifies the payment.', contact: '', open: true }
+const initialSettings = { eventDate: '31 October 2026', deadline: '27 October 2026', venue: 'Aminci Radio Sharada, Kwanar Ganduje, Sharada Industrial Area along Ilera Agro', time: '10:00am', bank: 'GTBank', account: 'Aminci Network Technology (Aminci Radio)', number: '0558087985', reference: '', instructions: 'Transfer ₦5,000 and keep your receipt. Your ticket becomes available after an administrator independently verifies the payment.', contact: '080336828125, 09048736532', open: true }
 const Logo = ({ small = false }: { small?: boolean }) => <img className={small ? 'logo small' : 'logo'} src="/aminci-radio.jpg" alt="Aminci Radio 103.9 FM Kano" />
 function App() {
   const [page, setPage] = useState<'home'|'register'|'portal'|'admin'|'checkin'>('home')
