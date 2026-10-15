@@ -6,7 +6,7 @@ Mobile-friendly registration and event-day check-in app for Aminci Radio and Dun
 
 The project includes the public programme page, validated registration form, duplicate checks, a participant status/evidence interface, an administrator dashboard preview, CSV export, PDF ticket rendering, QR generation, event settings form, manual check-in screen, Netlify Functions, and a Supabase schema with role-aware server operations and audit records.
 
-The app has a local preview mode when Supabase is not configured. Local browser storage is not a production backend: preview registration, payment actions, ticket QR values, admin controls, and check-ins are not suitable for real event operations. The Supabase registration and staff actions require the deployment configuration below. Staff UI authentication, participant expiring-link access, receipt storage, production scanning integration, ticket-token delivery, and UI-to-function wiring still need completion before production use. Do not collect or confirm real payments until those items are implemented and independently verified.
+The app has a local preview mode when Supabase is not configured. Local browser storage is not a production backend: preview registration, payment actions, ticket QR values, admin controls, and check-ins are not suitable for real event operations. Staff sign-in uses Supabase Auth and verifies an active staff profile. Participant expiring-link access, receipt storage, production scanning integration, ticket-token delivery, and several participant/check-in UI integrations still need completion before production use. Do not collect or confirm real payments until those items are implemented and independently verified.
 
 The organizer supplied the event schedule, venue, transfer account and support contacts. These values are included in the app's default settings and in the initial database seed.
 
@@ -14,7 +14,7 @@ The organizer supplied the event schedule, venue, transfer account and support c
 
 1. Install Node.js 20 or later.
 2. Run `npm install`.
-3. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` only after creating a Supabase project.
+3. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` only after creating a Supabase project.
 4. Run `npm run dev`.
 
 Without Supabase, the app opens in preview mode and stores data in the current browser only.
@@ -25,7 +25,9 @@ Without Supabase, the app opens in preview mode and stores data in the current b
 2. Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` as Netlify function environment variables. Never use the secret key in a `VITE_` variable.
 3. For local Netlify Functions, put `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in an ignored local `.env` file. Put `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` there for the client build. The secret key must never use a `VITE_` prefix.
 4. Create the initial administrator through Supabase Auth, then insert the matching Auth user ID into `public.profiles` with role `admin`, active `true`, and a full name. Create other staff with roles `finance` or `checkin` and only after the admin account is established.
-5. Populate `event_settings` with confirmed event and transfer details. Restrict dashboard access until authenticated UI integration has been completed.
+5. Populate `event_settings` with confirmed event and transfer details. Keep dashboard access limited to active staff profiles and verify each permission in a staging deployment.
+
+The staff sign-in form checks the Supabase Auth account and its matching active row in `public.profiles`. Use Supabase Auth to create or invite the staff account, then add its Auth user UUID to `public.profiles`; never store staff passwords in SQL or environment variables.
 
 The SQL policies deny anonymous access to participant, payment, ticket, check-in, and audit tables. Netlify privileged actions verify the caller's Supabase JWT and profile role before invoking service-only operations. Public registration uses server-side validation and checks duplicates. The public ticket verification function returns only a limited set of participant fields. Configure Netlify rate limiting / edge protection before public launch.
 
@@ -36,8 +38,8 @@ Connect the repository to Netlify. Build command is `npm run build`, publish dir
 ## Deployment checklist
 
 - [ ] Confirm event date, deadline, time, venue, bank details, and support contact with the organizer.
-- [ ] Finish and verify Supabase Auth sign-in, role-aware admin UI, participant expiring access links, and evidence uploads to a private Storage bucket.
-- [ ] Connect payment review, settings, receipt review, ticket activation/download and token retrieval, scanning, and check-in UI to the Netlify functions.
+- [ ] Verify Supabase Auth sign-in, role-aware admin access, payment review, ticket revocation, and settings updates against the deployed Netlify functions.
+- [ ] Finish participant expiring access links, private receipt uploads/review, ticket activation/download and token retrieval, production QR scanning, and database-backed check-in UI.
 - [ ] Add request rate limits and abuse monitoring to public endpoints.
 - [ ] Test duplicate registration, RLS access, staff permission boundaries, manual payment verification, ticket revocation, current QR lookup, repeat check-in, mobile layouts, and PDF output in a staging deployment.
 - [ ] Confirm no real keys or account credentials are committed.
