@@ -21,7 +21,7 @@ Without Supabase, the app opens in preview mode and stores data in the current b
 
 ## Supabase setup
 
-1. Create a new Supabase project and apply `supabase/migrations/202610140001_initial_schema.sql` using the SQL editor or Supabase CLI.
+1. Create a new Supabase project and apply migrations in `supabase/migrations` in filename order using the SQL editor or Supabase CLI. Existing projects should apply new migrations without rerunning destructive changes.
 2. Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` as Netlify function environment variables. Never use the secret key in a `VITE_` variable.
 3. For local Netlify Functions, put `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in an ignored local `.env` file. Put `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` there for the client build. The secret key must never use a `VITE_` prefix.
 4. Create the initial administrator through Supabase Auth, then insert the matching Auth user ID into `public.profiles` with role `admin`, active `true`, and a full name. Create other staff with roles `finance` or `checkin` and only after the admin account is established.
