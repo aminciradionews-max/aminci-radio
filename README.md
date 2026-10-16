@@ -33,6 +33,8 @@ The SQL policies deny anonymous access to participant, payment, ticket, check-in
 
 The staff registrations dashboard subscribes to Supabase Realtime changes on `registrations` and `payments`. It refreshes the staff view when a new registration or payment update arrives, with a 30-second polling fallback while Realtime reconnects. Apply `202610160006_staff_dashboard_realtime.sql` to enable these tables in the `supabase_realtime` publication.
 
+Only admins can permanently delete a registration. The dashboard requires a reason and a second confirmation; payment, ticket, and check-in records are deleted with it, while the audit event is retained without its participant foreign key. Apply `202610160007_admin_delete_registration.sql` before using this action in production.
+
 ## Netlify deployment
 
 Connect the repository to Netlify. Build command is `npm run build`, publish directory is `dist`, and functions are in `netlify/functions` (already configured in `netlify.toml`). Add `SUPABASE_URL` and `SUPABASE_SECRET_KEY` under Netlify's server-side environment variables, and `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for the client build. Local `.env` files are ignored and are not uploaded with a deploy. Deploy over HTTPS, configure the custom domain and force HTTPS, then verify function logs and Supabase policies in a staging project.
@@ -43,6 +45,7 @@ Connect the repository to Netlify. Build command is `npm run build`, publish dir
 - [ ] Verify Supabase Auth sign-in, role-aware admin access, payment review, ticket revocation, and settings updates against the deployed Netlify functions.
 - [ ] Apply migration `202610160005_participant_payment_evidence.sql` to create the private receipt bucket before enabling participant receipt uploads in production.
 - [ ] Apply migration `202610160006_staff_dashboard_realtime.sql` so staff receive live registration and payment updates.
+- [ ] Apply migration `202610160007_admin_delete_registration.sql` before enabling permanent registration deletion.
 - [ ] Verify participant evidence submission, private storage, short-lived staff receipt links, payment review, ticket activation/download and token retrieval in a staging deployment.
 - [ ] Verify production QR scanning and database-backed check-in UI.
 - [ ] Add request rate limits and abuse monitoring to public endpoints.

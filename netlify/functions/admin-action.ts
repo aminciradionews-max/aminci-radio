@@ -16,6 +16,11 @@ export const handler: Handler = async event => {
   try {
     const body = JSON.parse(event.body || '{}') as { action?: string; registrationId?: string; reason?: string; settings?: Record<string,unknown> }
     const id = body.registrationId
+    if (body.action === 'delete_registration' && profile.role === 'admin' && id && body.reason?.trim()) {
+      const { data, error } = await db.rpc('admin_delete_registration', { target_registration: id, staff_user: authUser.id, deletion_reason: body.reason.trim().slice(0,500) })
+      if (error) throw error
+      return { statusCode: 200, headers, body: JSON.stringify({ deleted: data }) }
+    }
     if (body.action === 'verify_payment' && ['admin','finance'].includes(profile.role) && id) {
       const { data, error } = await db.rpc('admin_verify_payment', { target_registration: id, staff_user: authUser.id }); if (error) throw error
       return { statusCode: 200, headers, body: JSON.stringify({ result: data }) }
