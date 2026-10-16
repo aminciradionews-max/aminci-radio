@@ -29,7 +29,7 @@ Without Supabase, the app opens in preview mode and stores data in the current b
 
 The staff sign-in form checks the Supabase Auth account and its matching active row in `public.profiles`. Use Supabase Auth to create or invite the staff account, then add its Auth user UUID to `public.profiles`; never store staff passwords in SQL or environment variables.
 
-The SQL policies deny anonymous access to participant, payment, ticket, check-in, and audit tables. Netlify privileged actions verify the caller's Supabase JWT and profile role before invoking service-only operations. Public registration uses server-side validation and checks duplicates. The public ticket verification function returns only a limited set of participant fields. Configure Netlify rate limiting / edge protection before public launch.
+The SQL policies deny anonymous access to participant, payment, ticket, check-in, and audit tables. Netlify privileged actions verify the caller's Supabase JWT and profile role before invoking service-only operations. Public registration uses server-side validation and checks duplicates. Each online registration receives a high-entropy private participant link; the participant portal uses it to retrieve the current payment state, and only returns a distinct ticket QR token after payment is verified. Authorized administrators can issue replacement participant links for older registrations. The public ticket verification function returns only a limited set of participant fields. Configure Netlify rate limiting / edge protection before public launch.
 
 ## Netlify deployment
 

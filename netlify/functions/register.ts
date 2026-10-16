@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Handler } from '@netlify/functions'
+import { createHash, randomBytes } from 'node:crypto'
 const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 export const handler: Handler = async event => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers, body: '' }
@@ -18,8 +19,10 @@ export const handler: Handler = async event => {
     if (existing?.length) return { statusCode: 409, headers, body: JSON.stringify({ error: 'A registration already exists with this phone number or email.' }) }
     const { data: settings } = await db.from('event_settings').select('registration_open').limit(1).maybeSingle()
     if (settings && !settings.registration_open) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Registration is currently closed.' }) }
-    const { data, error } = await db.from('registrations').insert({ full_name: name, phone, email: email || null, gender, age, residential_address: residentialAddress, device_type: deviceType, state, lga, occupation: typeof body.occupation === 'string' ? body.occupation.slice(0,160) : null, interests: interest }).select('id,reference,full_name,phone,email,gender,age,residential_address,device_type,state,lga,occupation,interests,payment_status,created_at').single()
+    const participantAccessToken = randomBytes(32).toString('base64url')
+    const participantAccessHash = createHash('sha256').update(participantAccessToken).digest('hex')
+    const { data, error } = await db.from('registrations').insert({ full_name: name, phone, email: email || null, gender, age, residential_address: residentialAddress, device_type: deviceType, participant_access_hash: participantAccessHash, state, lga, occupation: typeof body.occupation === 'string' ? body.occupation.slice(0,160) : null, interests: interest }).select('id,reference,full_name,phone,email,gender,age,residential_address,device_type,state,lga,occupation,interests,payment_status,created_at').single()
     if (error) throw error
-    return { statusCode: 201, headers, body: JSON.stringify({ registration: { id: data.reference, name: data.full_name, phone: data.phone, email: data.email || '', gender: data.gender, age: data.age, residentialAddress: data.residential_address, deviceType: data.device_type, state: data.state, lga: data.lga, occupation: data.occupation || '', interests: data.interests, status: data.payment_status, date: data.created_at } }) }
+    return { statusCode: 201, headers, body: JSON.stringify({ participantAccessToken, registration: { id: data.reference, name: data.full_name, phone: data.phone, email: data.email || '', gender: data.gender, age: data.age, residentialAddress: data.residential_address, deviceType: data.device_type, state: data.state, lga: data.lga, occupation: data.occupation || '', interests: data.interests, status: data.payment_status, date: data.created_at } }) }
   } catch (error) { console.error('registration failed', error); return { statusCode: 500, headers, body: JSON.stringify({ error: 'We could not save your registration. Please try again.' }) } }
 }

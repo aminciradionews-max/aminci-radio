@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Handler } from '@netlify/functions'
+import { createHash, randomBytes } from 'node:crypto'
 const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 export const handler: Handler = async event => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers, body: '' }
@@ -34,6 +35,18 @@ export const handler: Handler = async event => {
     if (body.action === 'save_settings' && profile.role === 'admin' && body.settings) {
       const { error } = await db.from('event_settings').upsert({ id: 1, ...body.settings, updated_by: authUser.id }, { onConflict: 'id' }); if (error) throw error
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) }
+    }
+    if (body.action === 'issue_participant_access' && profile.role === 'admin' && id) {
+      const participantToken = randomBytes(32).toString('base64url')
+      const participantHash = createHash('sha256').update(participantToken).digest('hex')
+      const { data: registration, error: registrationError } = await db.from('registrations').select('id,payment_status').eq('id', id).maybeSingle()
+      if (registrationError) throw registrationError
+      if (!registration) return { statusCode: 404, headers, body: JSON.stringify({ error: 'Registration not found.' }) }
+      const { error: updateError } = await db.from('registrations').update({ participant_access_hash: participantHash }).eq('id', id)
+      if (updateError) throw updateError
+      const { error: auditError } = await db.from('audit_logs').insert({ actor_id: authUser.id, action: 'participant_access_issued', registration_id: id })
+      if (auditError) throw auditError
+      return { statusCode: 200, headers, body: JSON.stringify({ accessToken: participantToken }) }
     }
     return { statusCode: 403, headers, body: JSON.stringify({ error: 'Action not permitted.' }) }
   } catch (error) { console.error('admin action failed', error); return { statusCode: 400, headers, body: JSON.stringify({ error: 'Action could not be completed.' }) } }
