@@ -36,6 +36,15 @@ export const handler: Handler = async event => {
       const { error } = await db.from('event_settings').upsert({ id: 1, ...body.settings, updated_by: authUser.id }, { onConflict: 'id' }); if (error) throw error
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) }
     }
+    if (body.action === 'get_payment_receipt' && ['admin','finance'].includes(profile.role) && id) {
+      const { data: payment, error: paymentError } = await db.from('payments').select('receipt_path')
+        .eq('registration_id', id).not('receipt_path', 'is', null).order('submitted_at', { ascending: false }).limit(1).maybeSingle()
+      if (paymentError) throw paymentError
+      if (!payment?.receipt_path) return { statusCode: 404, headers, body: JSON.stringify({ error: 'No uploaded receipt is available for this registration.' }) }
+      const { data: signed, error: signedError } = await db.storage.from('payment-receipts').createSignedUrl(payment.receipt_path, 300)
+      if (signedError) throw signedError
+      return { statusCode: 200, headers, body: JSON.stringify({ url: signed.signedUrl }) }
+    }
     if (body.action === 'issue_participant_access' && profile.role === 'admin' && id) {
       const participantToken = randomBytes(32).toString('base64url')
       const participantHash = createHash('sha256').update(participantToken).digest('hex')
