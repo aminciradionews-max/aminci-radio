@@ -118,9 +118,6 @@ export const handler: Handler = async event => {
       if (registrationError) throw registrationError
       if (!registration) return { statusCode: 404, headers, body: JSON.stringify({ error: 'Registration not found.' }) }
       if (registration.payment_status !== 'Paid — Verified') return { statusCode: 409, headers, body: JSON.stringify({ error: 'Certificate issuance requires verified payment.' }) }
-      const { data: attendance, error: attendanceError } = await db.from('check_ins').select('id').eq('registration_id', id).maybeSingle()
-      if (attendanceError) throw attendanceError
-      if (!attendance) return { statusCode: 409, headers, body: JSON.stringify({ error: 'Certificates are issued only after event staff record the participant’s attendance.' }) }
       let { data: certificate, error: certificateError } = await db.from('certificates')
         .select('certificate_number,token_nonce,revoked').eq('registration_id', id).maybeSingle()
       if (certificateError) throw certificateError

@@ -11,12 +11,12 @@ export const handler: Handler = async event => {
   const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } })
   const tokenHash = createHash('sha256').update(token).digest('hex')
   const { data, error } = await db.from('certificates')
-    .select('certificate_number,issued_at,revoked,registrations!inner(reference,full_name,payment_status,check_ins(id))')
+    .select('certificate_number,issued_at,revoked,registrations!inner(reference,full_name,payment_status)')
     .eq('token_hash', tokenHash).maybeSingle()
   if (error || !data) return { statusCode: 404, headers, body: JSON.stringify({ result: 'INVALID CERTIFICATE' }) }
-  const registration = Array.isArray(data.registrations) ? data.registrations[0] : data.registrations as unknown as { reference: string; full_name: string; payment_status: string; check_ins: {id:string}[] }
+  const registration = Array.isArray(data.registrations) ? data.registrations[0] : data.registrations as unknown as { reference: string; full_name: string; payment_status: string }
   if (data.revoked) return { statusCode: 200, headers, body: JSON.stringify({ result: 'CERTIFICATE REVOKED', certificateNumber: data.certificate_number }) }
-  if (registration.payment_status !== 'Paid — Verified' || !registration.check_ins?.length) {
+  if (registration.payment_status !== 'Paid — Verified') {
     return { statusCode: 200, headers, body: JSON.stringify({ result: 'CERTIFICATE NOT VALID', certificateNumber: data.certificate_number }) }
   }
   return { statusCode: 200, headers, body: JSON.stringify({ result: 'VALID CERTIFICATE', certificateNumber: data.certificate_number, participantName: registration.full_name, registrationId: registration.reference, issuedAt: data.issued_at, event: 'Social Media, Cybersecurity & Artificial Intelligence Training', eventDate: '31 October 2026' }) }

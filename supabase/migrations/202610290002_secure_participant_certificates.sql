@@ -19,4 +19,4 @@ alter table public.certificates enable row level security;
 revoke all on public.certificates from anon, authenticated;
 grant all on public.certificates to service_role;
 
-comment on table public.certificates is 'Server-issued certificates, verified by opaque tokens against current payment, attendance, and revocation records.';
+comment on table public.certificates is 'Server-issued certificates, verified by opaque tokens against current payment and revocation records.';
