@@ -112,6 +112,46 @@ export const handler: Handler = async event => {
           interests: fullRegistration.interests, status: fullRegistration.payment_status, date: fullRegistration.created_at }
       }) }
     }
+    if (body.action === 'issue_certificate' && profile.role === 'admin' && id) {
+      const { data: registration, error: registrationError } = await db.from('registrations')
+        .select('id,reference,full_name,payment_status').eq('id', id).maybeSingle()
+      if (registrationError) throw registrationError
+      if (!registration) return { statusCode: 404, headers, body: JSON.stringify({ error: 'Registration not found.' }) }
+      if (registration.payment_status !== 'Paid — Verified') return { statusCode: 409, headers, body: JSON.stringify({ error: 'Certificate issuance requires verified payment.' }) }
+      const { data: attendance, error: attendanceError } = await db.from('check_ins').select('id').eq('registration_id', id).maybeSingle()
+      if (attendanceError) throw attendanceError
+      if (!attendance) return { statusCode: 409, headers, body: JSON.stringify({ error: 'Certificates are issued only after event staff record the participant’s attendance.' }) }
+      let { data: certificate, error: certificateError } = await db.from('certificates')
+        .select('certificate_number,token_nonce,revoked').eq('registration_id', id).maybeSingle()
+      if (certificateError) throw certificateError
+      if (certificate?.revoked) return { statusCode: 409, headers, body: JSON.stringify({ error: 'This certificate was revoked. Contact the event administrator.' }) }
+      if (!certificate) {
+        const nonce = randomBytes(32).toString('base64url')
+        const certificateNumber = `AM-DMS-${new Date().getUTCFullYear()}-${randomBytes(6).toString('hex').toUpperCase()}`
+        const token = createHmac('sha256', key).update(`aminci-certificate:${id}:${nonce}`).digest('base64url')
+        const tokenHash = createHash('sha256').update(token).digest('hex')
+        const { data: inserted, error: insertError } = await db.from('certificates').insert({ registration_id: id, certificate_number: certificateNumber, token_hash: tokenHash, token_nonce: nonce, issued_by: authUser.id }).select('certificate_number,token_nonce,revoked').single()
+        if (insertError) {
+          // A concurrent issuance can win the registration_id unique constraint; reuse its record.
+          const { data: existing, error: rereadError } = await db.from('certificates').select('certificate_number,token_nonce,revoked').eq('registration_id', id).single()
+          if (rereadError) throw insertError
+          certificate = existing
+        } else certificate = inserted
+      }
+      if (!certificate || certificate.revoked) return { statusCode: 409, headers, body: JSON.stringify({ error: 'Certificate issuance is unavailable.' }) }
+      const certificateToken = createHmac('sha256', key).update(`aminci-certificate:${id}:${certificate.token_nonce}`).digest('base64url')
+      const { error: auditError } = await db.from('audit_logs').insert({ actor_id: authUser.id, action: 'certificate_issued_or_downloaded', registration_id: id, details: { certificate_number: certificate.certificate_number } })
+      if (auditError) throw auditError
+      return { statusCode: 200, headers, body: JSON.stringify({ certificate: { certificateNumber: certificate.certificate_number, token: certificateToken, name: registration.full_name, registrationId: registration.reference, eventDate: '31 October 2026', venue: 'Aminci Radio Sharada, Kwanar Ganduje, Sharada Industrial Area along Ilera Agro' } }) }
+    }
+    if (body.action === 'revoke_certificate' && profile.role === 'admin' && id && body.reason?.trim()) {
+      const { data: certificate, error } = await db.from('certificates').update({ revoked: true, revoked_at: new Date().toISOString(), revoked_by: authUser.id, revocation_reason: body.reason.trim().slice(0, 500) }).eq('registration_id', id).eq('revoked', false).select('certificate_number').maybeSingle()
+      if (error) throw error
+      if (!certificate) return { statusCode: 404, headers, body: JSON.stringify({ error: 'No active certificate exists for this participant.' }) }
+      const { error: auditError } = await db.from('audit_logs').insert({ actor_id: authUser.id, action: 'certificate_revoked', registration_id: id, details: { certificate_number: certificate.certificate_number, reason: body.reason.trim().slice(0, 500) } })
+      if (auditError) throw auditError
+      return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) }
+    }
     return { statusCode: 403, headers, body: JSON.stringify({ error: 'Action not permitted.' }) }
   } catch (error) { console.error('admin action failed', error); return { statusCode: 400, headers, body: JSON.stringify({ error: 'Action could not be completed.' }) } }
 }
