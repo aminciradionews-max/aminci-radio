@@ -22,17 +22,21 @@ export const handler: Handler = async event => {
     if (evidenceError) throw evidenceError
     let ticketToken: string | undefined
     if (data.payment_status === 'Paid — Verified') {
-      const { data: ticket, error: ticketReadError } = await db.from('tickets').select('id,revoked').eq('registration_id', data.id).maybeSingle()
+      const { data: ticket, error: ticketReadError } = await db.from('tickets').select('id,revoked,token_nonce').eq('registration_id', data.id).maybeSingle()
       if (ticketReadError) throw ticketReadError
       if (!ticket || !ticket.revoked) {
         // Derive a stable ticket token distinct from the participant portal token.
         // Scanning a QR therefore cannot grant access to the participant portal.
-        ticketToken = createHmac('sha256', key).update(`aminci-ticket:${data.id}`).digest('base64url')
-        const ticketHash = createHash('sha256').update(ticketToken).digest('hex')
-        const { error: ticketWriteError } = ticket
-          ? await db.from('tickets').update({ token_hash: ticketHash }).eq('id', ticket.id)
-          : await db.from('tickets').insert({ registration_id: data.id, token_hash: ticketHash })
-        if (ticketWriteError) throw ticketWriteError
+        ticketToken = ticket?.token_nonce
+          ? createHmac('sha256', key).update(`aminci-ticket:${data.id}:${ticket.token_nonce}`).digest('base64url')
+          : createHmac('sha256', key).update(`aminci-ticket:${data.id}`).digest('base64url')
+        if (!ticket?.token_nonce) {
+          const ticketHash = createHash('sha256').update(ticketToken).digest('hex')
+          const { error: ticketWriteError } = ticket
+            ? await db.from('tickets').update({ token_hash: ticketHash }).eq('id', ticket.id)
+            : await db.from('tickets').insert({ registration_id: data.id, token_hash: ticketHash })
+          if (ticketWriteError) throw ticketWriteError
+        }
       }
     }
     const { data: settings, error: settingsError } = await db.from('event_settings').select('event_date,deadline,venue,event_time,bank_name,account_name,account_number,payment_reference,payment_instructions,support_contact,registration_open').eq('id', 1).maybeSingle()
