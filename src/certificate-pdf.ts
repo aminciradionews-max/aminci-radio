@@ -34,6 +34,29 @@ const socialColor: Record<string, ReturnType<typeof rgb>> = {
   facebook: rgb(0.10, 0.36, 0.74), instagram: rgb(0.68, 0.20, 0.48), youtube: rgb(0.78, 0.12, 0.11),
   tiktok: rgb(0.10, 0.12, 0.15), x: rgb(0.10, 0.12, 0.15), linkedin: rgb(0.05, 0.39, 0.62), whatsapp: rgb(0.10, 0.57, 0.31)
 }
+const socialHosts: Record<(typeof socialOrder)[number], string[]> = {
+  facebook: ['facebook.com'], instagram: ['instagram.com'], youtube: ['youtube.com', 'youtu.be'],
+  tiktok: ['tiktok.com'], x: ['x.com', 'twitter.com'], linkedin: ['linkedin.com'], whatsapp: ['whatsapp.com', 'wa.me']
+}
+
+export function configuredSocialAccounts(links: Record<string, string>) {
+  return socialOrder.flatMap(platform => {
+    const value = links?.[platform]?.trim()
+    if (!value) return []
+    try {
+      const url = new URL(value)
+      const officialHost = socialHosts[platform].some(host => url.hostname === host || url.hostname.endsWith(`.${host}`))
+      if (url.protocol !== 'https:' || !officialHost || url.username || url.password) return []
+      return [{ platform, url: url.toString() }]
+    } catch { return [] }
+  })
+}
+
+export function certificateQrTarget(cert: CertificateData, baseUrl: string, preview = false) {
+  return preview
+    ? 'PREVIEW ONLY - NOT A VALID CERTIFICATE'
+    : `${baseUrl}/.netlify/functions/verify-certificate?token=${encodeURIComponent(cert.token)}`
+}
 
 function hexColor(value: string, fallback = '#c5ad44') {
   const hex = /^#[\da-f]{6}$/i.test(value) ? value.slice(1) : fallback.slice(1)
@@ -75,10 +98,31 @@ function icon(page: PDFPage, platform: string, x: number, y: number, font: PDFFo
 function addPdfLink(pdf: PDFDocument, page: PDFPage, url: string, x: number, y: number, size: number) {
   try {
     const uri = new URL(url)
-    if (!['https:', 'http:'].includes(uri.protocol)) return
+    if (uri.protocol !== 'https:') return
     const annotation = pdf.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: [x, y, x + size, y + size], Border: [0, 0, 0], A: { S: 'URI', URI: PDFString.of(uri.toString()) } })
     page.node.addAnnot(pdf.context.register(annotation))
   } catch { /* Ignore unconfigured or invalid social URLs. */ }
+}
+
+function contactIcon(page: PDFPage, kind: 'address' | 'phone' | 'website', x: number, y: number, color: ReturnType<typeof rgb>) {
+  if (kind === 'address') {
+    page.drawCircle({ x: x + 4, y: y + 5, size: 3.6, borderColor: color, borderWidth: 0.85 })
+    page.drawCircle({ x: x + 4, y: y + 5, size: 1.1, color })
+    page.drawLine({ start: { x: x + 1.1, y: y + 2.7 }, end: { x: x + 4, y: y - 0.7 }, thickness: 0.8, color })
+    page.drawLine({ start: { x: x + 6.9, y: y + 2.7 }, end: { x: x + 4, y: y - 0.7 }, thickness: 0.8, color })
+  } else if (kind === 'phone') {
+    page.drawLine({ start: { x: x + 1, y: y + 8 }, end: { x: x + 2.7, y: y + 6.2 }, thickness: 1.7, color })
+    page.drawLine({ start: { x: x + 2.7, y: y + 6.2 }, end: { x: x + 5.5, y: y + 3.4 }, thickness: 1.7, color })
+    page.drawLine({ start: { x: x + 5.5, y: y + 3.4 }, end: { x: x + 7.5, y: y + 5.3 }, thickness: 1.7, color })
+    page.drawLine({ start: { x: x + 1, y: y + 8 }, end: { x: x + 2.4, y: y + 9 }, thickness: 1, color })
+    page.drawLine({ start: { x: x + 6.2, y: y + 2.7 }, end: { x: x + 7.5, y: y + 5.3 }, thickness: 1, color })
+  } else {
+    page.drawCircle({ x: x + 4, y: y + 5, size: 4, borderColor: color, borderWidth: 0.8 })
+    page.drawLine({ start: { x: x, y: y + 5 }, end: { x: x + 8, y: y + 5 }, thickness: 0.55, color })
+    page.drawLine({ start: { x: x + 4, y: y + 1 }, end: { x: x + 4, y: y + 9 }, thickness: 0.55, color })
+    page.drawLine({ start: { x: x + 1, y: y + 7.5 }, end: { x: x + 7, y: y + 7.5 }, thickness: 0.45, color })
+    page.drawLine({ start: { x: x + 1, y: y + 2.5 }, end: { x: x + 7, y: y + 2.5 }, thickness: 0.45, color })
+  }
 }
 
 export async function buildCertificatePdf(cert: CertificateData, branding: CertificateBranding, baseUrl: string, logoBytes?: Uint8Array, preview = false) {
@@ -93,7 +137,7 @@ export async function buildCertificatePdf(cert: CertificateData, branding: Certi
   // Repeat the vector-text watermark on the full sheet before drawing any foreground content.
   if (branding.watermarkEnabled) {
     const wm = hexColor(branding.watermarkColor)
-    const opacity = Math.min(0.14, Math.max(0.025, Number(branding.watermarkOpacity) || 0.075))
+    const opacity = Math.min(0.14, Math.max(0.025, Number(branding.watermarkOpacity) || 0.085))
     const size = Math.min(12, Math.max(5, Number(branding.watermarkFontSize) || 7))
     const spacing = Math.min(100, Math.max(34, Number(branding.watermarkSpacing) || 64))
     const angle = Math.min(-12, Math.max(-55, Number(branding.watermarkAngle) || -28))
@@ -121,25 +165,26 @@ export async function buildCertificatePdf(cert: CertificateData, branding: Certi
     try {
       const isPng = logoBytes[0] === 0x89 && logoBytes[1] === 0x50
       const image = isPng ? await pdf.embedPng(logoBytes) : await pdf.embedJpg(logoBytes)
-      const box = { x: 51, y: 489, width: 62, height: 62 }
+      const box = { x: 48, y: 484, width: 72, height: 72 }
       const scale = Math.min(box.width / image.width, box.height / image.height)
       const width = image.width * scale, height = image.height * scale
       page.drawImage(image, { x: box.x + (box.width - width) / 2, y: box.y + (box.height - height) / 2, width, height })
     } catch { /* Retain the letterhead text if a custom logo cannot be embedded. */ }
   }
   page.drawText((branding.stationName || 'AMINCI RADIO 103.9 FM KANO').slice(0, 64), { x: 126, y: 535, size: 14, font: bold, color: dark, maxWidth: 330 })
-  page.drawText(`Address: ${(branding.stationAddress || '').slice(0, 80)}`, { x: 126, y: 518, size: 8, font: regular, color: muted, maxWidth: 335 })
-  page.drawText(`Phone: ${(branding.stationPhone || '').slice(0, 32)}`, { x: 126, y: 503, size: 8, font: regular, color: muted, maxWidth: 335 })
-  page.drawText(`Website: ${(branding.stationWebsite || '').slice(0, 64)}`, { x: 126, y: 488, size: 8, font: regular, color: muted, maxWidth: 335 })
+  contactIcon(page, 'address', 126, 516, gold)
+  contactIcon(page, 'phone', 126, 501, gold)
+  contactIcon(page, 'website', 126, 486, gold)
+  page.drawText(`Address: ${(branding.stationAddress || '').slice(0, 80)}`, { x: 139, y: 518, size: 8, font: regular, color: muted, maxWidth: 322 })
+  page.drawText(`Phone: ${(branding.stationPhone || '').slice(0, 32)}`, { x: 139, y: 503, size: 8, font: regular, color: muted, maxWidth: 322 })
+  page.drawText(`Website: ${(branding.stationWebsite || '').slice(0, 64)}`, { x: 139, y: 488, size: 8, font: regular, color: muted, maxWidth: 322 })
   page.drawLine({ start: { x: 475, y: 481 }, end: { x: 475, y: 550 }, thickness: 1, color: gold })
   page.drawText('IN COLLABORATION WITH', { x: 500, y: 536, size: 8, font: bold, color: muted })
   page.drawText('DUNIYAR SOCIAL MEDIA', { x: 500, y: 517, size: 13, font: bold, color: rgb(0.03, 0.31, 0.55) })
   let iconX = 500
-  for (const platform of socialOrder) {
-    const link = branding.socialLinks?.[platform]?.trim()
-    if (!link) continue
+  for (const { platform, url } of configuredSocialAccounts(branding.socialLinks || {})) {
     icon(page, platform, iconX, 487, bold, muted)
-    addPdfLink(pdf, page, link, iconX, 487, 14)
+    addPdfLink(pdf, page, url, iconX, 487, 14)
     iconX += 23
   }
 
@@ -168,7 +213,7 @@ export async function buildCertificatePdf(cert: CertificateData, branding: Certi
   page.drawText('OFFICIAL', { x: 563, y: 104, size: 8, font: bold, color: muted })
   page.drawText('STAMP AREA', { x: 558, y: 92, size: 7, font: regular, color: muted })
   page.drawRectangle({ x: 720, y: 74, width: 80, height: 80, color: cream, borderColor: gold, borderWidth: 1.1 })
-  const qrContents = preview ? 'PREVIEW ONLY - NOT A VALID CERTIFICATE' : `${baseUrl}/.netlify/functions/verify-certificate?token=${encodeURIComponent(cert.token)}`
+  const qrContents = certificateQrTarget(cert, baseUrl, preview)
   const qrUrl = await QRCode.toDataURL(qrContents, { width: 256, margin: 1, errorCorrectionLevel: 'H' })
   const qrImage = await pdf.embedPng(new Uint8Array(await (await fetch(qrUrl)).arrayBuffer()))
   page.drawImage(qrImage, { x: 726, y: 80, width: 68, height: 68 })

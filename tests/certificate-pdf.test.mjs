@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { PDFDocument } from 'pdf-lib'
-import { buildCertificatePdf } from '../src/certificate-pdf.ts'
+import { buildCertificatePdf, certificateQrTarget, configuredSocialAccounts } from '../src/certificate-pdf.ts'
 
 const branding = {
   stationName: 'AMINCI RADIO 103.9 FM KANO',
@@ -55,4 +55,28 @@ test('watermark can be disabled without changing page dimensions', async () => {
     assert.ok(Math.abs(pdf.getPages()[0].getWidth() - 841.89) < 0.1)
     assert.ok(Math.abs(pdf.getPages()[0].getHeight() - 595.28) < 0.1)
   }
+})
+
+test('only saved HTTPS links on the matching official platform are included', () => {
+  const accounts = configuredSocialAccounts({
+    facebook: 'https://www.facebook.com/aminci-radio',
+    instagram: 'http://instagram.com/not-secure',
+    youtube: 'https://youtube.example.invalid/fake',
+    x: '',
+  })
+  assert.deepEqual(accounts.map(account => account.platform), ['facebook'])
+  assert.equal(accounts[0].url, 'https://www.facebook.com/aminci-radio')
+})
+
+test('a configured social icon is a clickable link in the generated PDF', async () => {
+  const data = { name:'Preview Participant', registrationId:'AM-QA-SOCIAL', certificateNumber:'PREVIEW', token:'', eventDate:'31 October 2026', venue:'Aminci Radio, Kano' }
+  const bytes = await buildCertificatePdf(data, { ...branding, socialLinks:{ facebook:'https://www.facebook.com/example' } }, 'https://aminciradio.netlify.app', undefined, true)
+  const pdf = await PDFDocument.load(bytes)
+  assert.equal(pdf.getPages()[0].node.Annots()?.size(), 1)
+})
+
+test('production QR target addresses verification with the opaque ticket token', () => {
+  const cert = { name:'Sample', registrationId:'AM-QA-QR', certificateNumber:'CERT-QA', token:'opaque+token/value', eventDate:'31 October 2026', venue:'Aminci Radio, Kano' }
+  assert.equal(certificateQrTarget(cert, 'https://aminciradio.netlify.app'), 'https://aminciradio.netlify.app/.netlify/functions/verify-certificate?token=opaque%2Btoken%2Fvalue')
+  assert.equal(certificateQrTarget(cert, 'https://aminciradio.netlify.app', true), 'PREVIEW ONLY - NOT A VALID CERTIFICATE')
 })
