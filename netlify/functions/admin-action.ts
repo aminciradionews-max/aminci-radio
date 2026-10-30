@@ -21,7 +21,7 @@ export const handler: Handler = async event => {
   const { data: profile } = await db.from('profiles').select('role,active').eq('id', authUser.id).single()
   if (!profile?.active || !['admin','finance','checkin'].includes(profile.role)) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Insufficient permission.' }) }
   try {
-    const body = JSON.parse(event.body || '{}') as { action?: string; registrationId?: string; reason?: string; settings?: Record<string,unknown> }
+    const body = JSON.parse(event.body || '{}') as { action?: string; registrationId?: string; reason?: string; settings?: Record<string,unknown>; fileBase64?: string; contentType?: string }
     const id = body.registrationId
     if (body.action === 'delete_registration' && profile.role === 'admin' && id && body.reason?.trim()) {
       const { data, error } = await db.rpc('admin_delete_registration', { target_registration: id, staff_user: authUser.id, deletion_reason: body.reason.trim().slice(0,500) })
@@ -47,6 +47,27 @@ export const handler: Handler = async event => {
     if (body.action === 'save_settings' && profile.role === 'admin' && body.settings) {
       const { error } = await db.from('event_settings').upsert({ id: 1, ...body.settings, updated_by: authUser.id }, { onConflict: 'id' }); if (error) throw error
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) }
+    }
+    if (body.action === 'upload_certificate_logo' && profile.role === 'admin') {
+      const contentType = body.contentType
+      if (!['image/jpeg', 'image/png'].includes(contentType || '') || typeof body.fileBase64 !== 'string') {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Upload a JPEG or PNG logo.' }) }
+      }
+      const file = Buffer.from(body.fileBase64, 'base64')
+      if (!file.length || file.length > 2 * 1024 * 1024) return { statusCode: 413, headers, body: JSON.stringify({ error: 'Logo must be smaller than 2 MB.' }) }
+      const isJpeg = contentType === 'image/jpeg' && file[0] === 0xff && file[1] === 0xd8 && file[2] === 0xff
+      const isPng = contentType === 'image/png' && file.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))
+      if (!isJpeg && !isPng) return { statusCode: 400, headers, body: JSON.stringify({ error: 'The uploaded file does not match its image type.' }) }
+      const extension = isPng ? 'png' : 'jpg'
+      const path = `station/logo.${extension}`
+      const { error: uploadError } = await db.storage.from('certificate-assets').upload(path, file, { contentType, upsert: true, cacheControl: '3600' })
+      if (uploadError) throw uploadError
+      const { data: publicAsset } = db.storage.from('certificate-assets').getPublicUrl(path)
+      const { error: settingsError } = await db.from('event_settings').upsert({ id: 1, certificate_logo_url: publicAsset.publicUrl, updated_by: authUser.id }, { onConflict: 'id' })
+      if (settingsError) throw settingsError
+      const { error: auditError } = await db.from('audit_logs').insert({ actor_id: authUser.id, action: 'certificate_logo_updated', details: { content_type: contentType } })
+      if (auditError) throw auditError
+      return { statusCode: 200, headers, body: JSON.stringify({ logoUrl: publicAsset.publicUrl }) }
     }
     if (body.action === 'get_payment_receipt' && ['admin','finance'].includes(profile.role) && id) {
       const { data: payment, error: paymentError } = await db.from('payments').select('receipt_path')
@@ -146,7 +167,23 @@ export const handler: Handler = async event => {
       const certificateToken = createHmac('sha256', key).update(`aminci-certificate:${id}:${certificate.token_nonce}`).digest('base64url')
       const { error: auditError } = await db.from('audit_logs').insert({ actor_id: authUser.id, action: 'certificate_issued_or_downloaded', registration_id: id, details: { certificate_number: certificate.certificate_number } })
       if (auditError) throw auditError
-      return { statusCode: 200, headers, body: JSON.stringify({ certificate: { certificateNumber: certificate.certificate_number, token: certificateToken, name: registration.full_name, registrationId: registration.reference, eventDate: '31 October 2026', venue: 'Aminci Radio Sharada, Kwanar Ganduje, Sharada Industrial Area along Ilera Agro' } }) }
+      const { data: eventSettings, error: eventSettingsError } = await db.from('event_settings')
+        .select('event_date,venue,station_name,station_address,station_phone,station_website,station_social_links,certificate_logo_url,certificate_watermark_enabled,certificate_watermark_text,certificate_watermark_opacity,certificate_watermark_font_size,certificate_watermark_angle,certificate_watermark_spacing,certificate_watermark_color,certificate_border_enabled')
+        .eq('id', 1).maybeSingle()
+      if (eventSettingsError) throw eventSettingsError
+      return { statusCode: 200, headers, body: JSON.stringify({ certificate: {
+        certificateNumber: certificate.certificate_number, token: certificateToken, name: registration.full_name,
+        registrationId: registration.reference, eventDate: eventSettings?.event_date || '', venue: eventSettings?.venue || '',
+        branding: eventSettings ? {
+          stationName: eventSettings.station_name, stationAddress: eventSettings.station_address, stationPhone: eventSettings.station_phone,
+          stationWebsite: eventSettings.station_website, socialLinks: eventSettings.station_social_links || {},
+          certificateLogoUrl: eventSettings.certificate_logo_url || '/aminci-radio.jpg', watermarkEnabled: eventSettings.certificate_watermark_enabled,
+          watermarkText: eventSettings.certificate_watermark_text, watermarkOpacity: eventSettings.certificate_watermark_opacity,
+          watermarkFontSize: eventSettings.certificate_watermark_font_size, watermarkAngle: eventSettings.certificate_watermark_angle,
+          watermarkSpacing: eventSettings.certificate_watermark_spacing, watermarkColor: eventSettings.certificate_watermark_color,
+          securityBorderEnabled: eventSettings.certificate_border_enabled
+        } : undefined
+      } }) }
     }
     if (body.action === 'revoke_certificate' && profile.role === 'admin' && id && body.reason?.trim()) {
       const { data: certificate, error } = await db.from('certificates').update({ revoked: true, revoked_at: new Date().toISOString(), revoked_by: authUser.id, revocation_reason: body.reason.trim().slice(0, 500) }).eq('registration_id', id).eq('revoked', false).select('certificate_number').maybeSingle()
