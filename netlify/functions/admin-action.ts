@@ -5,12 +5,19 @@ const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Orig
 export const handler: Handler = async event => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers, body: '' }
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: 'Method not allowed' }
-  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SECRET_KEY, token = event.headers.authorization?.replace(/^Bearer\s+/i, '')
-  if (!url || !key || !token) return { statusCode: 401, headers, body: JSON.stringify({ error: 'Authentication required.' }) }
+  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SECRET_KEY
+  const authApiKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+  const token = event.headers.authorization?.replace(/^Bearer\s+/i, '')
+  if (!url || !key || !authApiKey) return { statusCode: 503, headers, body: JSON.stringify({ error: 'Staff authentication is not configured on the server.' }) }
+  if (!token) return { statusCode: 401, headers, body: JSON.stringify({ error: 'Authentication required. Sign in again.' }) }
   const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } })
-  const authResponse = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${token}` } })
+  const authResponse = await fetch(`${url}/auth/v1/user`, { headers: { apikey: authApiKey, Authorization: `Bearer ${token}` } })
   const authUser = authResponse.ok ? await authResponse.json() as { id?: string } : null
-  if (!authUser?.id) return { statusCode: 401, headers, body: JSON.stringify({ error: 'Invalid session.' }) }
+  if (!authUser?.id) {
+    const authError = await authResponse.clone().json().catch(() => ({})) as { code?: string; msg?: string; message?: string }
+    console.error('admin action session verification failed', { status: authResponse.status, code: authError.code, message: authError.msg || authError.message })
+    return { statusCode: 401, headers, body: JSON.stringify({ error: 'Supabase rejected this staff session. Sign out and sign in again; confirm the browser and server use the same Supabase project.' }) }
+  }
   const { data: profile } = await db.from('profiles').select('role,active').eq('id', authUser.id).single()
   if (!profile?.active || !['admin','finance','checkin'].includes(profile.role)) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Insufficient permission.' }) }
   try {

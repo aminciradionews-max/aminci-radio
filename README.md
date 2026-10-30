@@ -22,8 +22,8 @@ Without Supabase, the app opens in preview mode and stores data in the current b
 ## Supabase setup
 
 1. Create a new Supabase project and apply migrations in `supabase/migrations` in filename order using the SQL editor or Supabase CLI. Existing projects should apply new migrations without rerunning destructive changes.
-2. Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` as Netlify function environment variables. Never use the secret key in a `VITE_` variable.
-3. For local Netlify Functions, put `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in an ignored local `.env` file. Put `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` there for the client build. The secret key must never use a `VITE_` prefix.
+2. Set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY` as Netlify function environment variables. `SUPABASE_PUBLISHABLE_KEY` is used to validate staff access tokens; `SUPABASE_SECRET_KEY` is only for privileged server-side database operations. Never use the secret key in a `VITE_` variable.
+3. For local Netlify Functions, put `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY` in an ignored local `.env` file. Put `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` there for the client build. The secret key must never use a `VITE_` prefix.
 4. Create the initial administrator through Supabase Auth, then insert the matching Auth user ID into `public.profiles` with role `admin`, active `true`, and a full name. Create other staff with roles `finance` or `checkin` and only after the admin account is established.
 5. Populate `event_settings` with confirmed event and transfer details. Keep dashboard access limited to active staff profiles and verify each permission in a staging deployment.
 
@@ -37,7 +37,7 @@ Only admins can permanently delete a registration. The dashboard requires a reas
 
 ## Netlify deployment
 
-Connect the repository to Netlify. Build command is `npm run build`, publish directory is `dist`, and functions are in `netlify/functions` (already configured in `netlify.toml`). Add `SUPABASE_URL` and `SUPABASE_SECRET_KEY` under Netlify's server-side environment variables, and `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for the client build. Local `.env` files are ignored and are not uploaded with a deploy. Deploy over HTTPS, configure the custom domain and force HTTPS, then verify function logs and Supabase policies in a staging project.
+Connect the repository to Netlify. Build command is `npm run build`, publish directory is `dist`, and functions are in `netlify/functions` (already configured in `netlify.toml`). Add `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY` under Netlify environment variables for functions, and `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for the client build. Use the same Supabase project URL and publishable key on both sides. Local `.env` files are ignored and are not uploaded with a deploy. Deploy over HTTPS, configure the custom domain and force HTTPS, then verify function logs and Supabase policies in a staging project.
 
 ## Deployment checklist
 
